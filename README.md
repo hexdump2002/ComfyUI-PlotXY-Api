@@ -1,2 +1,2 @@
 # ComfyUI-PlotXY-Api
-How to build something like ComfyUI PlotXY grids but through API
+ComfyUI PlotXY grids using ComfyUI API on the browser (Automation example) 
