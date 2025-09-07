@@ -9,5 +9,7 @@ How to use it?
 
 Extremely experimental.
 
+Output Example:
+
 <img width="1622" height="990" alt="image" src="https://github.com/user-attachments/assets/4dde3c20-ec75-4368-a27c-c20e7b7a81e8" />
 
