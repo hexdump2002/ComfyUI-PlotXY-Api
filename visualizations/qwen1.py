@@ -4,8 +4,10 @@ import utils.workflow as wfUtils
 # rows and cols define how many images will be generated
 # x/y define how values are generated for each image
 definition:dict = {
-    'rows': 4,
-    'cols': 4,
+    'rows': 2,
+    'cols': 2,
+    'gridImgWidth': 200,
+    'gridImgHeight': 200,
     'workflow': 'workflows/qwen_workflow.json',
     'values': {
         'x': {

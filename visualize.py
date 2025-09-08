@@ -115,7 +115,7 @@ def _buildAxisLabelsForWorkflowIteration(workflow:dict, valuesDef:dict) -> tuple
     return xLabel,yLabel
 '''
 
-def generateAndOpenHTML(webImages:list, xLabels:list, yLabels:list):
+def generateAndOpenHTML(webImages:list, xLabels:list, yLabels:list, imgWidth:int, imgHeight:int):
     xLabelsSize:int = len(xLabels)
     yLabelsSize:int = len(yLabels)
     
@@ -145,8 +145,8 @@ def generateAndOpenHTML(webImages:list, xLabels:list, yLabels:list):
     }}
 
     img {{
-    max-width: 100px;
-    max-height: 100px;
+    max-width: {imgWidth}px;
+    max-height:{imgHeight}px;
     border-radius: 6px;
     object-fit: cover;
     }}
@@ -241,6 +241,7 @@ cols= visualizationDef['cols']
 
 for rowIndex in range(rows):
     for colIndex in range(cols):
+        print(f"[INFO] Creating image {rowIndex*cols+colIndex}")
         workflow = buildWorkflow(workflow,visualizationDef['values'], rowIndex,colIndex)
         if rowIndex>=len(yAxisLabels):
             yAxisLabels.append( _buildLabelForAxis(workflow, visualizationDef['values']['y']))
@@ -259,4 +260,8 @@ webImages = []
 for img in allImages:
     webImages.append(pil_to_base64(img))
 
-generateAndOpenHTML(webImages, xAxisLabels, yAxisLabels)
+imgWidth:int= 100
+imgHeight:int = 100
+if 'gridImgWidth' in visualizationDef: imgWidth = int(visualizationDef['gridImgWidth'])
+if 'gridImgHeight' in visualizationDef: imgHeight = int(visualizationDef['gridImgHeight'])
+generateAndOpenHTML(webImages, xAxisLabels, yAxisLabels,imgWidth,imgHeight)
