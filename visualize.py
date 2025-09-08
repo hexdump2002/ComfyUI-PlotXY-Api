@@ -16,6 +16,7 @@ import os
 from pathlib import Path
 import importlib.util
 import sys
+import time
 
 serverAddress = "127.0.0.1:8000"
 clientId = str(uuid.uuid4())
@@ -114,7 +115,7 @@ def _buildAxisLabelsForWorkflowIteration(workflow:dict, valuesDef:dict) -> tuple
     yLabel=_buildLabelForAxis(workflow,valuesDef['y'])
     return xLabel,yLabel
 '''
-
+'''
 def generateAndOpenHTML(webImages:list, xLabels:list, yLabels:list, imgWidth:int, imgHeight:int):
     xLabelsSize:int = len(xLabels)
     yLabelsSize:int = len(yLabels)
@@ -149,7 +150,17 @@ def generateAndOpenHTML(webImages:list, xLabels:list, yLabels:list, imgWidth:int
     max-height:{imgHeight}px;
     border-radius: 6px;
     object-fit: cover;
+    transition: transform 0.3s ease;
+    cursor: zoom-in;
     }}
+
+    td img:hover {{
+    transform: scale(2);
+    transition: transform 0.3s ease;
+    z-index: 10;
+    position: relative;
+    }}
+
     </style>
     </head>
     <body>
@@ -182,6 +193,116 @@ def generateAndOpenHTML(webImages:list, xLabels:list, yLabels:list, imgWidth:int
         f.write(html)
 
     webbrowser.open(filename)
+'''
+
+import tempfile
+import webbrowser
+import html as html_lib
+
+def generateAndOpenHTML(webImages: list, xLabels: list, yLabels: list, imgWidth: int, imgHeight: int):
+    xLabelsSize = len(xLabels)
+    yLabelsSize = len(yLabels)
+
+    if len(webImages) != xLabelsSize * yLabelsSize:
+        raise ValueError(f"webImage size {len(webImages)} is not the same as xLabels*yLabels {xLabelsSize*yLabelsSize}")
+
+    # Escape labels for HTML safety
+    xLabels = [html_lib.escape(label) for label in xLabels]
+    yLabels = [html_lib.escape(label) for label in yLabels]
+
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+    body {{
+        font-family: sans-serif;
+        text-align: center;
+    }}
+    table {{
+        border-collapse: collapse;
+        margin: auto;
+    }}
+    th, td {{
+        border: 1px solid #ccc;
+        padding: 10px;
+        vertical-align: middle;
+    }}
+    th {{
+        background-color: #f0f0f0;
+        font-weight: bold;
+        white-space: nowrap;
+    }}
+    img {{
+        max-width: {imgWidth}px;
+        max-height: {imgHeight}px;
+        border-radius: 6px;
+        object-fit: cover;
+        cursor: pointer;
+        transition: opacity 0.2s ease;
+    }}
+    #popupModal {{
+        display: none;
+        position: fixed;
+        top: 0; left: 0;
+        width: 100%; height: 100%;
+        background-color: rgba(0,0,0,0.8);
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+    }}
+    #popupImage {{
+        max-width: 90%;
+        max-height: 90%;
+        border-radius: 10px;
+        box-shadow: 0 0 20px rgba(255,255,255,0.3);
+    }}
+    </style>
+    </head>
+    <body>
+
+    <div id="popupModal" onclick="this.style.display='none'">
+        <img id="popupImage" />
+    </div>
+
+    <table>
+    <tr><th></th>
+    """
+
+    # Column headers
+    for text in xLabels:
+        html += f"<th>{text}</th>"
+    html += "</tr>\n"
+
+    # Rows with row headers and images
+    for r in range(yLabelsSize):
+        html += f"<tr><th>{yLabels[r]}</th>"
+        for c in range(xLabelsSize):
+            imgSrc = f"data:image/png;base64,{webImages[r*xLabelsSize + c]}"
+            html += f'<td><img src="{imgSrc}" onclick="showPopup(this.src)" title="{xLabels[c]} - {yLabels[r]}" /></td>'
+        html += "</tr>\n"
+
+    html += """
+    </table>
+
+    <script>
+    function showPopup(src) {
+        const modal = document.getElementById("popupModal");
+        const img = document.getElementById("popupImage");
+        img.src = src;
+        modal.style.display = "flex";
+    }
+    </script>
+
+    </body>
+    </html>
+    """
+
+    # Save and open in browser
+    with tempfile.NamedTemporaryFile('w', delete=False, suffix='.html') as f:
+        f.write(html)
+        webbrowser.open(f.name)
 
 def checkParams(args):
     if not os.path.exists(args.script):
@@ -239,9 +360,11 @@ yAxisLabels = []
 rows= visualizationDef['rows']
 cols= visualizationDef['cols']
 
+totalTime=0.0
 for rowIndex in range(rows):
     for colIndex in range(cols):
         print(f"[INFO] Creating image {rowIndex*cols+colIndex}")
+        start = time.time()
         workflow = buildWorkflow(workflow,visualizationDef['values'], rowIndex,colIndex)
         if rowIndex>=len(yAxisLabels):
             yAxisLabels.append( _buildLabelForAxis(workflow, visualizationDef['values']['y']))
@@ -250,11 +373,16 @@ for rowIndex in range(rows):
 
 
         images = comfyUIUtils.get_images(serverAddress,ws, clientId, workflow)
+        elapsed = time.time()-start 
+        print(f"[INFO] It took {elapsed:.2f} seconds")
+        totalTime+=elapsed
+        start = time.time()
         pilImages = getPILImagesFromComfyUIImages(images)
-
         allImages.extend(pilImages)
 
 ws.close() 
+
+print(f"[INFO] All Done in {totalTime}")
 
 webImages = []
 for img in allImages:
