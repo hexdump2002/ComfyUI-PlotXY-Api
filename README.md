@@ -6,6 +6,7 @@ How to use it?
 - Build a ComfyUI workflow and save it as an API workflow
 - Create a visualization definition (An example in visualizations folder)
 - Excute it and wait for the visualization to finish: visualize.py visualizations/qwen1.py
+- When html loads you can click any image to show it at full size. Click again to get back to the image grid.
 
 Extremely experimental.
 
