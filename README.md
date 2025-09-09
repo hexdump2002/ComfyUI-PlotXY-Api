@@ -63,7 +63,10 @@ definition:dict = {
 
 Extremely experimental.
 
-Output Example:
+Output Examples:
 
++ One param per Axis
 <img width="1622" height="990" alt="image" src="https://github.com/user-attachments/assets/4dde3c20-ec75-4368-a27c-c20e7b7a81e8" />
 
++ One param on Y and 2 on X Axis
+<img width="1849" height="946" alt="image" src="https://github.com/user-attachments/assets/1106ef8a-8b21-4abb-aa7e-1c4c5f8d8d19" />
