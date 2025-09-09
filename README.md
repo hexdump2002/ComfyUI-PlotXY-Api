@@ -27,7 +27,7 @@ definition:dict = {
     'workflow': 'workflows/qwen_workflow.json',
     'values': {
         # Here you set the values all workflows will run with 
-        # In this particular case I want all output images to be 1024x512
+        # In this particular case I want all output images to be 512x512
         'initial': {
             'EmptySD3LatentImage':{
                 'width': 512,
