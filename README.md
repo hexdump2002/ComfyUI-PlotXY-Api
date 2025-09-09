@@ -8,7 +8,7 @@ How to use it?
 - Excute it and wait for the visualization to finish: visualize.py visualizations/qwen1.py
 - When html loads you can click any image to show it at full size. Click again to get back to the image grid.
 
-How to build a visualizatoin definition?
+How to write a visualization definition?
 
 Follow the visualizations/qwen1.py examples. You can use multiple params for each axis beside initial values for all prompt iterations
 
