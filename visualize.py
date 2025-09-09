@@ -3,7 +3,6 @@ import uuid
 import json
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import ImageGrid
-import random
 import base64
 from io import BytesIO
 import webbrowser
@@ -17,6 +16,8 @@ from pathlib import Path
 import importlib.util
 import sys
 import time
+import tempfile
+import html as html_lib
 
 serverAddress = "127.0.0.1:8000"
 clientId = str(uuid.uuid4())
@@ -58,157 +59,107 @@ def getPILImagesFromComfyUIImages(images:list) -> list:
             pilImages.append(image)
     return pilImages
 
-def getInputPropertyValue(curWorkflowNode,nodeDef,param:str,index:int):
+def getInputPropertyValue(previousCellData:dict,nodeDef,param:str, axisIndex:int):
     value = None
     paramValueDef = nodeDef[param]
     if callable(paramValueDef):
         val = paramValueDef()
     elif type(paramValueDef) is list:
-        val = paramValueDef[index]
+        val = paramValueDef[axisIndex]
     elif type(paramValueDef) is dict:
-        val = paramValueDef['setter'](curWorkflowNode['inputs'][param],nodeDef[param],index)
+        val = paramValueDef['setter'](previousCellData[param],nodeDef[param],axisIndex)
     else:
         val = paramValueDef
     
     return val
 
-def _fillWorkflowForAxis(workflow:dict, axisDef,index:int) -> list:
+
+def _generateLabelForAxisCell(axisData) -> str:
+    label:str=""
+    for param, paramValue in axisData.items():
+        if label: label+";"
+        label=label+param+"="+str(paramValue)
+
+    return label
+
+def _generateGridDataForAxisCell(previousCellData:dict, axisDef:dict, axisIndex:int):
+    axisData=dict()
     for nodeName, values in axisDef.items():
-        i:int = 0
+        axisData[nodeName]={}
         for param, paramValue in values.items():
-            node = workflowUtils.getNodeByName(workflow,nodeName)
-            if param in node['inputs']:
-                node['inputs'][param]=getInputPropertyValue(node,values,param,index)
-            else:
-                raise Exception(f"Node {nodeName} doesn't have a parameter called {param}")
-            i=i+1
+            axisData[nodeName][param]=getInputPropertyValue(previousCellData,values,param,axisIndex)
+    return axisData      
+
+def _generateGridDataForCell(previousCellData:dict, visualizationDef:dict, rowIndex:int, colIndex:int) -> dict:
+    cellData=dict()
+    
+    if 'values' not in visualizationDef:
+        raise ValueError('[Error] Visualization definition doesnt have a "values" key')
+    if 'grid' not in visualizationDef['values']:
+        raise ValueError('[Error] Values definiion doesnt have a "grid" key')
+    if 'x' not in visualizationDef['values']['grid']:
+        raise ValueError('[Error] Grid definition doesnt have a "x" key')
+    if 'y' not in visualizationDef['values']['grid']:
+        raise ValueError('[Error] Grid definition doesnt have a "y" key')
+        
+
+    xValues = visualizationDef['values']['grid']['x']
+    yValues = visualizationDef['values']['grid']['y']
+    
+    cellData['x'] = _generateGridDataForAxisCell(previousCellData, xValues,colIndex)
+    cellData['y'] = _generateGridDataForAxisCell(previousCellData, yValues,rowIndex)
+    cellData['labelx'] = _generateLabelForAxisCell(cellData['x'])
+    cellData['labely'] = _generateLabelForAxisCell(cellData['y'])
+
+    return cellData
+
+def generateGridData(rows:int, cols:int,visualizationDef:dict):
+    gridData:list[list] = []
+    previousCellData = None
+    for rowIndex in range(rows):
+        gridData.append([])
+        for colIndex in range(cols):
+            data = _generateGridDataForCell(previousCellData,visualizationDef,rowIndex,colIndex)
+            gridData[rowIndex].append(data)
+            previousCellData = data
+    return gridData      
+
+def _setNodePropertyValueByName(nodeName, workflow, paramName, paramValue):
+    node = workflowUtils.getNodeByName(workflow,nodeName)
+    if paramName in node['inputs']:
+        node['inputs'][paramName]=paramValue
+    else:
+        raise Exception(f"Node {nodeName} doesn't have a parameter called {paramName}")
+
+
+def _fillWorkflowCellData(workflow:dict, cellData:dict) -> list:
+        for nodeName, values in cellData['x'].items():
+            for param, paramValue in values.items():
+                _setNodePropertyValueByName(nodeName,workflow,param,paramValue)
+        
+        for nodeName, values in cellData['y'].items():
+            for param, paramValue in values.items():
+                _setNodePropertyValueByName(nodeName,workflow,param,paramValue)
+
+def _fillWorkflowInitials(workflow:dict, initialsData:dict) -> list:
+    for nodeName, values in initialsData.items():
+        for param, paramValue in values.items():
+            _setNodePropertyValueByName(nodeName,workflow,param,paramValue)
 
 #from a workflow it generates another with the needed params changed for this comfyui generation.
-def buildWorkflow(workflow:dict, valuesDef:dict,rowIndex:int, colIndex:int) -> dict:
+def buildWorkflowForCell(workflow:dict, gridCellData:dict,visualizationDef:dict) -> dict:
     workflowCopy = copy.deepcopy(workflow)
     
-    xDef=valuesDef['x']
-    yDef=valuesDef['y']
+    # Apply initial values for every workflow iteration
+    initialData= visualizationDef['values'].get('initial')
     
-    _fillWorkflowForAxis(workflowCopy,xDef,colIndex)
-    _fillWorkflowForAxis(workflowCopy,yDef,rowIndex)
+    _fillWorkflowInitials(workflowCopy,initialData)
+    _fillWorkflowCellData(workflowCopy,gridCellData)
         
     return workflowCopy
 
-#After building each image with the given values we could generate its labels for 
-#veritcal and horizontal values here. Right now, it only appends the param name.
-def _buildLabelForAxis(workflow:dict, axisDef) -> str:
-    label:str=""
-    for nodeName, values in axisDef.items():
-        for param, paramValue in values.items():
-            node = workflowUtils.getNodeByName(workflow,nodeName)
-            if param in node['inputs']:
-                if label: label+";"
-                label=label+param+"="+str(node['inputs'][param])
-            else:
-                raise Exception(f"Node {nodeName} doesn't have a parameter called {param}")
-    return label
             
-'''
-def _buildAxisLabelsForWorkflowIteration(workflow:dict, valuesDef:dict) -> tuple[str,str]:
-    xLabel=_buildLabelForAxis(workflow, valuesDef['x'])
-    yLabel=_buildLabelForAxis(workflow,valuesDef['y'])
-    return xLabel,yLabel
-'''
-'''
-def generateAndOpenHTML(webImages:list, xLabels:list, yLabels:list, imgWidth:int, imgHeight:int):
-    xLabelsSize:int = len(xLabels)
-    yLabelsSize:int = len(yLabels)
-    
-    if len(webImages)!=xLabelsSize * yLabelsSize:
-        raise ValueError(f"webImage size {len(webImages)} is not the same that xLabels*yLables {xLabelsSize*yLabelsSize}")
-    html = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-    <style>
-    table {{
-    border-collapse: collapse;
-    font-family: sans-serif;
-    text-align: center;
-    }}
-
-    th, td {{
-    border: 1px solid #ccc;
-    padding: 10px;
-    vertical-align: middle;
-    }}
-
-    th {{
-    background-color: #f0f0f0;
-    font-weight: bold;
-    white-space: nowrap;
-    }}
-
-    img {{
-    max-width: {imgWidth}px;
-    max-height:{imgHeight}px;
-    border-radius: 6px;
-    object-fit: cover;
-    transition: transform 0.3s ease;
-    cursor: zoom-in;
-    }}
-
-    td img:hover {{
-    transform: scale(2);
-    transition: transform 0.3s ease;
-    z-index: 10;
-    position: relative;
-    }}
-
-    </style>
-    </head>
-    <body>
-    <table>
-    <tr>
-        <th></th>
-    """
-
-    # Column headers
-    for text in xLabels:
-        html += f"<th>{text}</th>"
-    html += "</tr>\n"
-
-    # Rows with row headers and images
-    for r in range(yLabelsSize):
-        html += f"<tr><th>{yLabels[r]}</th>"
-        for c in range(xLabelsSize):
-            html += f'<td><img src="data:image/png;base64,{webImages[r*xLabelsSize+c]}" /></td>'
-        html += "</tr>\n"
-
-    html += """
-    </table>
-    </body>
-    </html>
-    """
-
-    # Save and open
-    filename = "embedded_grid.html"
-    with open(filename, "w") as f:
-        f.write(html)
-
-    webbrowser.open(filename)
-'''
-
-import tempfile
-import webbrowser
-import html as html_lib
-
-def generateAndOpenHTML(webImages: list, xLabels: list, yLabels: list, imgWidth: int, imgHeight: int):
-    xLabelsSize = len(xLabels)
-    yLabelsSize = len(yLabels)
-
-    if len(webImages) != xLabelsSize * yLabelsSize:
-        raise ValueError(f"webImage size {len(webImages)} is not the same as xLabels*yLabels {xLabelsSize*yLabelsSize}")
-
-    # Escape labels for HTML safety
-    xLabels = [html_lib.escape(label) for label in xLabels]
-    yLabels = [html_lib.escape(label) for label in yLabels]
+def generateAndOpenHTML(gridData:list[list], imgWidth: int, imgHeight: int):
 
     html = f"""
     <!DOCTYPE html>
@@ -270,17 +221,28 @@ def generateAndOpenHTML(webImages: list, xLabels: list, yLabels: list, imgWidth:
     <tr><th></th>
     """
 
-    # Column headers
-    for text in xLabels:
-        html += f"<th>{text}</th>"
+    # Escape labels for HTML safety
+    # xLabels = [html_lib.escape(label) for label in xLabels]
+    # yLabels = [html_lib.escape(label) for label in yLabe
+    
+    
+    # Column header
+    columns=0
+    firstColData = gridData[0] #first row
+    for colData in firstColData:
+        html += f"<th>{colData['labelx']}</th>"
+        columns+=1
     html += "</tr>\n"
 
     # Rows with row headers and images
-    for r in range(yLabelsSize):
-        html += f"<tr><th>{yLabels[r]}</th>"
-        for c in range(xLabelsSize):
-            imgSrc = f"data:image/png;base64,{webImages[r*xLabelsSize + c]}"
-            html += f'<td><img src="{imgSrc}" onclick="showPopup(this.src)" title="{xLabels[c]} - {yLabels[r]}" /></td>'
+    for r in gridData:
+        html += f"<tr><th>{r[0]['labely']}</th>"
+        for c in r:
+            # We support retrieving several images from a prompt. By now only get along with the first one returned
+            # This support can disappear in the future. Don't know if it has any sense tu support it
+            base64Image = pil_to_base64(c['image'][0]) 
+            imgSrc = f"data:image/png;base64,{base64Image}"
+            html += f'<td><img src="{imgSrc}" onclick="showPopup(this.src)" title="{c['labelx']} - {c['labely']}" /></td>'
         html += "</tr>\n"
 
     html += """
@@ -346,8 +308,6 @@ with open(visualizationDef['workflow']) as f:
     workflowJsonData = f.read()
 workflow:dict = json.loads(workflowJsonData)
 
-allImages = []
-
 # Connect to API using websockets
 ws = websocket.WebSocket()
 
@@ -361,35 +321,31 @@ rows= visualizationDef['rows']
 cols= visualizationDef['cols']
 
 totalTime=0.0
+
+gridData: list[list] = generateGridData(rows,cols,visualizationDef)
+
+
 for rowIndex in range(rows):
     for colIndex in range(cols):
         print(f"[INFO] Creating image {rowIndex*cols+colIndex}")
         start = time.time()
-        workflow = buildWorkflow(workflow,visualizationDef['values'], rowIndex,colIndex)
-        if rowIndex>=len(yAxisLabels):
-            yAxisLabels.append( _buildLabelForAxis(workflow, visualizationDef['values']['y']))
-        if colIndex>=len(xAxisLabels): 
-            xAxisLabels.append( _buildLabelForAxis(workflow, visualizationDef['values']['x']))
+        prompt = buildWorkflowForCell(workflow,gridData[rowIndex][colIndex],visualizationDef)
+        print(prompt)
 
-
-        images = comfyUIUtils.get_images(serverAddress,ws, clientId, workflow)
+        images = comfyUIUtils.get_images(serverAddress,ws, clientId, prompt)
         elapsed = time.time()-start 
         print(f"[INFO] It took {elapsed:.2f} seconds")
         totalTime+=elapsed
         start = time.time()
         pilImages = getPILImagesFromComfyUIImages(images)
-        allImages.extend(pilImages)
+        gridData[rowIndex][colIndex]['image']=pilImages
 
 ws.close() 
 
 print(f"[INFO] All Done in {totalTime}")
 
-webImages = []
-for img in allImages:
-    webImages.append(pil_to_base64(img))
-
 imgWidth:int= 100
 imgHeight:int = 100
 if 'gridImgWidth' in visualizationDef: imgWidth = int(visualizationDef['gridImgWidth'])
 if 'gridImgHeight' in visualizationDef: imgHeight = int(visualizationDef['gridImgHeight'])
-generateAndOpenHTML(webImages, xAxisLabels, yAxisLabels,imgWidth,imgHeight)
+generateAndOpenHTML(gridData,imgWidth,imgHeight)

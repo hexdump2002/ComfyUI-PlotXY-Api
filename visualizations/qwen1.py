@@ -4,23 +4,36 @@ import utils.workflow as wfUtils
 # rows and cols define how many images will be generated
 # x/y define how values are generated for each image
 definition:dict = {
-    'rows': 4,
-    'cols': 4,
+    'rows': 2,
+    'cols': 1,
     'gridImgWidth': 200,
     'gridImgHeight': 200,
     'workflow': 'workflows/qwen_workflow.json',
     'values': {
-        'x': {
-            'MainKSampler': {
-                'seed': {
-                    'step':2,
-                    'setter': lambda oldValue,valueDef,iteration: wfUtils.getSeed() if iteration==0 else oldValue+valueDef['step']
-                },
+        # Here you set the values all workflows will run with 
+        # In this particular case I want all output images to be 1024x512
+        'initial': {
+            'EmptySD3LatentImage':{
+                'width': 512,
+                'height': 512
             }
         },
-         'y': {
-            'MainKSampler': {
-                'cfg': [0.5,1,1.5,2] #round(random.uniform(1.0,3.0),1)
+        # Here you define how values for both grid axis will be generated
+        'grid': {
+            'x': {
+                'MainKSampler': {
+                    'seed': wfUtils.getSeed
+                    #'seed': {
+                    #    'step':2,
+                    #    'setter': getSeed() #lambda oldValue,valueDef,iteration: wfUtils.getSeed() if iteration==0 else oldValue+valueDef['step']
+                    #},
+                    
+                }
+            },
+            'y': {
+                'MainKSampler': {
+                    'cfg': [0.5,1] #round(random.uniform(1.0,3.0),1)
+                }
             }
         }
     }
