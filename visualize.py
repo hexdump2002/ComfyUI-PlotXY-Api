@@ -59,15 +59,13 @@ def getPILImagesFromComfyUIImages(images:list) -> list:
             pilImages.append(image)
     return pilImages
 
-def getInputPropertyValue(previousCellData:dict,nodeDef,param:str, axisIndex:int):
+def getInputPropertyValue(previousParamData,nodeDef:dict,param:str, axisIndex:int):
     value = None
     paramValueDef = nodeDef[param]
     if callable(paramValueDef):
-        val = paramValueDef()
+        val = paramValueDef(previousParamData,nodeDef[param],axisIndex)
     elif type(paramValueDef) is list:
         val = paramValueDef[axisIndex]
-    elif type(paramValueDef) is dict:
-        val = paramValueDef['setter'](previousCellData[param],nodeDef[param],axisIndex)
     else:
         val = paramValueDef
     
@@ -82,15 +80,16 @@ def _generateLabelForAxisCell(axisData) -> str:
 
     return label
 
-def _generateGridDataForAxisCell(previousCellData:dict, axisDef:dict, axisIndex:int):
+def _generateGridDataForAxisCell(previousCellData:dict, axisDef:dict,axisIndex:int):
     axisData=dict()
     for nodeName, values in axisDef.items():
         axisData[nodeName]={}
         for param, paramValue in values.items():
-            axisData[nodeName][param]=getInputPropertyValue(previousCellData,values,param,axisIndex)
+            previousParamData = None if previousCellData is None else previousCellData[nodeName][param]
+            axisData[nodeName][param]=getInputPropertyValue(previousParamData,values,param,axisIndex)
     return axisData      
 
-def _generateGridDataForCell(previousCellData:dict, visualizationDef:dict, rowIndex:int, colIndex:int) -> dict:
+def _generateGridDataForCell(gridData:dict, visualizationDef:dict, rowIndex:int, colIndex:int) -> dict:
     cellData=dict()
     
     if 'values' not in visualizationDef:
@@ -106,8 +105,20 @@ def _generateGridDataForCell(previousCellData:dict, visualizationDef:dict, rowIn
     xValues = visualizationDef['values']['grid']['x']
     yValues = visualizationDef['values']['grid']['y']
     
-    cellData['x'] = _generateGridDataForAxisCell(previousCellData, xValues,colIndex)
-    cellData['y'] = _generateGridDataForAxisCell(previousCellData, yValues,rowIndex)
+    #It is safe to access cells generated previously while generating new ones
+    if rowIndex == 0:
+        oldvalue = None if colIndex == 0 else gridData[0][colIndex-1]['x']
+        cellData['x'] = _generateGridDataForAxisCell(oldvalue, xValues,colIndex)
+    else:
+        cellData['x'] = copy.deepcopy(gridData[0][colIndex]['x'])
+
+    if colIndex==0:
+        oldvalue = None if rowIndex == 0 else gridData[rowIndex-1][0]['y']
+        cellData['y'] = _generateGridDataForAxisCell(oldvalue, yValues,rowIndex)
+    else:
+        cellData['y'] = copy.deepcopy(gridData[rowIndex][0]['y'])
+   
+        
     cellData['labelx'] = _generateLabelForAxisCell(cellData['x'])
     cellData['labely'] = _generateLabelForAxisCell(cellData['y'])
 
@@ -119,7 +130,7 @@ def generateGridData(rows:int, cols:int,visualizationDef:dict):
     for rowIndex in range(rows):
         gridData.append([])
         for colIndex in range(cols):
-            data = _generateGridDataForCell(previousCellData,visualizationDef,rowIndex,colIndex)
+            data = _generateGridDataForCell(gridData,visualizationDef,rowIndex,colIndex)
             gridData[rowIndex].append(data)
             previousCellData = data
     return gridData      
@@ -330,8 +341,7 @@ for rowIndex in range(rows):
         print(f"[INFO] Creating image {rowIndex*cols+colIndex}")
         start = time.time()
         prompt = buildWorkflowForCell(workflow,gridData[rowIndex][colIndex],visualizationDef)
-        print(prompt)
-
+        
         images = comfyUIUtils.get_images(serverAddress,ws, clientId, prompt)
         elapsed = time.time()-start 
         print(f"[INFO] It took {elapsed:.2f} seconds")
@@ -339,6 +349,7 @@ for rowIndex in range(rows):
         start = time.time()
         pilImages = getPILImagesFromComfyUIImages(images)
         gridData[rowIndex][colIndex]['image']=pilImages
+        
 
 ws.close() 
 
