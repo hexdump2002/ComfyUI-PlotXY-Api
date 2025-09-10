@@ -5,8 +5,8 @@ import random
 # rows and cols define how many images will be generated
 # x/y define how values are generated for each image
 definition:dict = {
-    'rows': 2,
-    'cols': 2,
+    'rows': 1,
+    'cols': 4,
     'gridImgWidth': 200,
     'gridImgHeight': 200,
     'workflow': 'visualizations/workflows/qwen_turnarounds.json',
