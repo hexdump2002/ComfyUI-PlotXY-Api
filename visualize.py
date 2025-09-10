@@ -162,9 +162,9 @@ def buildWorkflowForCell(workflow:dict, gridCellData:dict,visualizationDef:dict)
     workflowCopy = copy.deepcopy(workflow)
     
     # Apply initial values for every workflow iteration
-    initialData= visualizationDef['values'].get('initial')
+    initialData= visualizationDef['values'].get('initialValues')
     
-    _fillWorkflowInitials(workflowCopy,initialData)
+    if initialData: _fillWorkflowInitials(workflowCopy,initialData)
     _fillWorkflowCellData(workflowCopy,gridCellData)
         
     return workflowCopy
@@ -335,6 +335,11 @@ totalTime=0.0
 
 gridData: list[list] = generateGridData(rows,cols,visualizationDef)
 
+# Resolve all resource dependencies before running the workflow
+if 'resources' in visualizationDef['values']:
+    if 'images' in visualizationDef['values']['resources']:
+        for imagePath in visualizationDef['values']['resources']['images']:
+            comfyUIUtils.upload_image(serverAddress, imagePath)
 
 for rowIndex in range(rows):
     for colIndex in range(cols):

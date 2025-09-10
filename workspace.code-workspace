@@ -13,7 +13,7 @@
 				"request": "launch",
 				"program": "${file}",
 				"console": "integratedTerminal",
-				"args": ["visualizations/qwen1.py", "--save-images"]
+				"args": ["visualizations/scripts/qwen_turnarounds.py", "--save-images"]
 			}
 		]
 	}
